@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>채팅 테스트</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        padding: 20px;
+      }
+      #messagesBox {
+        margin-top: 20px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 10px;
+        width: 500px;
+        height: 250px;
+        overflow-y: auto;
+      }
+      #messagesBox h2 {
+        margin: 0 0 10px 0;
+        font-size: 16px;
+      }
+      #messages {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+      }
+      #messages li {
+        margin-bottom: 5px;
+      }
+      #status {
+        margin-top: 10px;
+        font-size: 14px;
+        color: #555;
+      }
+      input {
+        margin-right: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>채팅 테스트</h1>
+
+    <div>
+      <input id="roomId" placeholder="roomId 입력" style="width: 300px" />
+      <button id="joinBtn">방 입장</button>
+    </div>
+
+    <div style="margin-top: 10px">
+      <input id="senderId" placeholder="senderId(유저 ID)" />
+      <input id="content" placeholder="메시지 내용" style="width: 300px" />
+      <button id="sendBtn">보내기</button>
+    </div>
+
+    <div id="status">아직 방에 입장하지 않았습니다.</div>
+
+    <!-- 여기 박스 안이 "아래 리스트" -->
+    <div id="messagesBox">
+      <h2>메시지 목록</h2>
+      <ul id="messages"></ul>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+      const socket = io("http://localhost:4000");
+
+      const roomInput = document.getElementById("roomId");
+      const joinBtn = document.getElementById("joinBtn");
+      const senderInput = document.getElementById("senderId");
+      const contentInput = document.getElementById("content");
+      const sendBtn = document.getElementById("sendBtn");
+      const messagesUl = document.getElementById("messages");
+      const statusDiv = document.getElementById("status");
+
+      let currentRoomId = null;
+
+      // 방 입장
+      joinBtn.onclick = () => {
+        const roomId = roomInput.value.trim();
+        if (!roomId) {
+          alert("roomId를 먼저 입력하세요.");
+          return;
+        }
+        currentRoomId = roomId;
+        socket.emit("joinRoom", { roomId });
+        statusDiv.textContent = "방 입장 완료: " + roomId;
+      };
+
+      // 메시지 보내기
+      sendBtn.onclick = () => {
+        const roomId = currentRoomId;
+        const senderId = senderInput.value.trim();
+        const content = contentInput.value.trim();
+
+        if (!roomId) {
+          alert("먼저 방에 입장하세요.");
+          return;
+        }
+        if (!senderId) {
+          alert("senderId(유저 ID)를 입력하세요.");
+          return;
+        }
+        if (!content) {
+          alert("메시지 내용을 입력하세요.");
+          return;
+        }
+
+        console.log("sendMessage emit:", { roomId, senderId, content });
+        socket.emit("sendMessage", { roomId, senderId, content });
+        contentInput.value = "";
+      };
+
+      // 서버에서 새 메시지 수신
+      socket.on("newMessage", (msg) => {
+        console.log("newMessage 수신:", msg);
+        const li = document.createElement("li");
+        li.textContent = `[${msg.senderId}] ${msg.content} (${new Date(
+          msg.createdAt
+        ).toLocaleTimeString()})`;
+        messagesUl.appendChild(li);
+      });
+
+      socket.on("connect", () => {
+        console.log("소켓 연결됨:", socket.id);
+      });
+
+      socket.on("disconnect", () => {
+        console.log("소켓 끊김");
+        statusDiv.textContent = "서버와 연결이 끊어졌습니다.";
+      });
+    </script>
+  </body>
+</html>
