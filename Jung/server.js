@@ -43,7 +43,7 @@ app.get('/', (req, res) => {
 });
 
 /* =========================================================
-   🚀 1순위 API: 숙소 목록 조회 (필터 기능 + 새 컬럼 조회)
+   🚀 1순위 API: 숙소 목록 조회 (필터 기능 + 검색 기능 + 새 컬럼 조회)
    ========================================================= */
 app.get('/accommodations', async (req, res) => {
     
@@ -86,7 +86,6 @@ app.get('/accommodations', async (req, res) => {
         res.status(500).json({ message: '서버 오류가 발생했습니다.' });
     }
 });
-
 /* =========================================================
    🚀 2순위 API: 회원가입 (POST /register)
    ========================================================= */
@@ -326,6 +325,46 @@ const authMiddleware = (req, res, next) => {
     }
 };
 
+/* =========================================================
+   🚀 2-3순위 API: 내 정보 조회 (GET /me) (★새로 추가★)
+   ========================================================= */
+// (새 주석) 이 API는 JWT를 검사해야 하므로 'authMiddleware'를 사용합니다.
+app.get('/me', authMiddleware, async (req, res) => {
+    
+    // (새 주석) 1. '티켓 검사원'이 req.user에 넣어준 '로그인한 사용자 ID'를 꺼냅니다.
+    const { userId } = req.user; 
+
+    try {
+        // (새 주석) 2. DB에서 해당 ID의 사용자 정보를 조회합니다. (비밀번호 제외)
+        const query = `
+            SELECT 
+                user_id,
+                username,
+                name,
+                email,
+                phone,
+                role_code,
+                created_at
+            FROM users
+            WHERE user_id = ?
+        `; // ⬅️ (수정) SQL을 백틱(``)으로 감싸서 문자열로 만들었습니다.
+
+        const [rows] = await dbPool.query(query, [userId]);
+
+        // 3. (검사) 사용자가 없으면 404
+        if (rows.length === 0) {
+            return res.status(404).json({ message: '사용자를 찾을 수 없습니다.' });
+        }
+
+        // 4. 조회된 정보를 DTO 형식으로 응답합니다.
+        res.status(200).json({ user: rows[0] });
+
+    } catch (error) {
+        console.error('내 정보 조회 중 오류:', error);
+        res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
+});
+
 
 /* =========================================================
    🚀 4순위 API: 예약하기 (POST /reservations)
@@ -438,7 +477,7 @@ app.get('/me/reservations', authMiddleware, async (req, res) => {
             JOIN RoomType AS rt ON r.room_type_id = rt.room_type_id
             JOIN Accommodation AS a ON rt.accommodation_id = a.accommodation_id
             WHERE r.user_id = ?
-            ORDER BY r.checkin_date DESC; //  체크인 날짜가 최신인 순서대로 정렬
+            ORDER BY r.checkin_date DESC;
         `;
         
         const [reservations] = await dbPool.query(query, [userId]);
@@ -512,7 +551,7 @@ app.get('/me/favorites', authMiddleware, async (req, res) => {
             FROM Favorite AS f
             JOIN Accommodation AS a ON f.accommodation_id = a.accommodation_id
             WHERE f.user_id = ?
-            ORDER BY f.created_at DESC; //  가장 최근에 찜한 순서대로 정렬
+            ORDER BY f.created_at DESC;
         `;
         
         const [favorites] = await dbPool.query(query, [userId]);
