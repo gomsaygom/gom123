@@ -34,6 +34,7 @@ const dbPool = mysql.createPool({
 // (상수 상단으로 이동)
 const saltRounds = 10; 
 const JWT_SECRET_KEY = '1234ad'; // ⬅️ (기존 주석) (★중요!★ 나중에 아무도 모르는 값으로 바꾸세요)
+const JWT_REFRESH_SECRET_KEY = '12345ad';
 
 /* =========================================================
    기본 경로 (Root Route) - 님이 만든 코드 (테스트용)
@@ -145,61 +146,66 @@ app.post('/register', async (req, res) => {
 
 
 /* =========================================================
-   🚀 2순위 API: 로그인 (POST /login)
+   🚀 2순위 API: 로그인 (POST /login) / (Refresh Token 발급 추가됨)
    ========================================================= */
 //  JWT(자유이용권)을 만들 때 사용할 '비밀 서명'.
 // const JWT_SECRET_KEY = '1234ad'; // (상단으로 이동됨)
 
 //  '/login' 주소로 'POST' 방식의 요청이 오면 이 코드가 실행됨
 app.post('/login', async (req, res) => {
-    
-    //  1. 프론트가 보낸 'username'과 'password'를 받습니다.
     const { username, password } = req.body;
-
-    //  (유효성 검사)
     if (!username || !password) {
         return res.status(400).json({ message: '아이디와 비밀번호를 모두 입력하세요.' });
     }
 
     try {
-        //  2. DB(users 테이블)에서 'username'으로 사용자를 찾습니다. (활성화된 계정만)
         const query = 'SELECT * FROM users WHERE username = ? AND is_active = 1';
         const [users] = await dbPool.query(query, [username]);
 
-        //  3. (검사 1) 사용자가 없는 경우
         if (users.length === 0) {
             console.log(`❌ 로그인 실패: ID [${username}] - 사용자 없음.`); // ⬅️ (로그 추가됨)
             return res.status(401).json({ message: '아이디 또는 비밀번호가 잘못되었습니다.' });
         }
 
-        const user = users[0]; // 찾은 사용자 정보
-
-        // 4. (검사 2) 비밀번호 비교 (★핵심★)
+        const user = users[0]; 
         const isMatch = await bcrypt.compare(password, user.password);
 
-        // 5. (검사 2 결과) 비밀번호가 틀린 경우
         if (!isMatch) {
             console.log(`❌ 로그인 실패: ID [${username}] - 비밀번호 불일치.`); // ⬅️ (로그 추가됨)
             return res.status(401).json({ message: '아이디 또는 비밀번호가 잘못되었습니다.' });
         }
 
-        //  6. (로그인 성공!) '자유이용권(JWT)'을 발급합니다.
-        const token = jwt.sign(
-            { 
-                userId: user.user_id, 
-                role: user.role_code 
-            }, 
+        // 1. Access Token 발급 (1시간)
+        const accessToken = jwt.sign(
+            { userId: user.user_id, role: user.role_code }, 
             JWT_SECRET_KEY, 
             { expiresIn: '1h' } 
         );
+
+        // 2. (★추가됨★) Refresh Token 발급 (7일)
+        const refreshToken = jwt.sign(
+            { userId: user.user_id }, 
+            JWT_REFRESH_SECRET_KEY, 
+            { expiresIn: '7d' } 
+        );
+
+        // 3. (★추가됨★) Refresh Token을 DB에 저장
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7); // 7일 뒤 만료
+
+        const insertTokenQuery = `
+            INSERT INTO RefreshToken (user_id, token, expires_at)
+            VALUES (?, ?, ?)
+        `;
+        await dbPool.query(insertTokenQuery, [user.user_id, refreshToken, expiresAt]);
         
-        // ⬅️ ★여기! 로그인 성공 로그가 추가되었습니다★
         console.log(`✅ 로그인 성공! [${user.role_code}] 사용자: ${user.username} (ID: ${user.user_id})`); 
         
-        //  7. 프론트에게 토큰(자유이용권)을 응답으로 줍니다.
+        // 4. 두 토큰을 모두 응답
         res.status(200).json({
             message: '로그인 성공!',
-            token: token,
+            accessToken: accessToken,  // (이름 변경됨: token -> accessToken)
+            refreshToken: refreshToken, // (새로 추가됨)
             username: user.name 
         });
 
@@ -243,6 +249,67 @@ app.get('/auth/session', (req, res) => {
         return res.json({ isAuthenticated: false });
     }
 });
+
+/* =========================================================
+   🔄 토큰 재발급 API (POST /auth/refresh)
+   ========================================================= */
+// 이 API는 Access Token이 아닌, 유효 기간이 긴 Refresh Token을 검증합니다.
+app.post('/auth/refresh', async (req, res) => {
+    // 1. 프론트에서 보낸 Refresh Token을 받습니다.
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+        return res.status(401).json({ message: 'Refresh Token이 필요합니다.' });
+    }
+
+    try {
+        // 2. DB에 해당 토큰이 실제로 존재하는지 확인
+        const findTokenQuery = 'SELECT * FROM RefreshToken WHERE token = ?';
+        const [rows] = await dbPool.query(findTokenQuery, [refreshToken]);
+
+        if (rows.length === 0) {
+            // (DB에 토큰이 없거나, 이미 사용/만료된 것)
+            return res.status(403).json({ message: '유효하지 않은 Refresh Token입니다.' });
+        }
+
+        const dbToken = rows[0];
+
+        // 3. 토큰 자체의 유효성 검증 (위조 여부, 만료 여부)
+        jwt.verify(refreshToken, JWT_REFRESH_SECRET_KEY, async (err, decoded) => {
+            if (err) {
+                // 토큰 만료 에러 (유효 기간 7일이 지났을 때)
+                return res.status(403).json({ message: 'Refresh Token이 만료되었습니다.' });
+            }
+
+            // 4. DB에 저장된 만료 날짜 체크 (보안 강화)
+            if (new Date() > new Date(dbToken.expires_at)) {
+                 return res.status(403).json({ message: 'Refresh Token이 만료되었습니다. 다시 로그인하세요.' });
+            }
+
+            // 5. 해당 유저의 최신 정보 가져오기 (Role 등 확인 위해)
+            const [users] = await dbPool.query('SELECT * FROM users WHERE user_id = ?', [decoded.userId]);
+            const user = users[0];
+
+            // 6. 새로운 Access Token 발급 (다시 1시간)
+            const newAccessToken = jwt.sign(
+                { userId: user.user_id, role: user.role_code },
+                JWT_SECRET_KEY,
+                { expiresIn: '1h' }
+            );
+
+            // 7. 새 토큰 응답
+            res.json({
+                accessToken: newAccessToken,
+                message: '토큰이 재발급되었습니다.'
+            });
+        });
+
+    } catch (error) {
+        console.error('토큰 재발급 중 오류:', error);
+        res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
+});
+
 
 /* =========================================================
    🚀 3순위 API: 숙소 상세 조회 (GET /accommodations/:id) 
@@ -599,7 +666,7 @@ app.delete('/favorites/:id', authMiddleware, async (req, res) => {
 });
 
 /* =========================================================
-   🚀 7순위 API: 인기 숙소 추천 (GET /recommend/popular) (★새로 추가★)
+   🚀 7순위 API: 인기 숙소 추천 (GET /recommend/popular)
    ========================================================= */
 // (새 주석) 이 API는 가장 예약 건수가 많은 숙소를 순서대로 조회합니다.
 // (새 주석) 로그인 없이도 가능하도록 authMiddleware는 적용하지 않습니다.
@@ -614,8 +681,8 @@ app.get('/recommend/popular', async (req, res) => {
                 a.accommodation_id,
                 a.name AS accommodation_name,
                 a.region_city,
-                COUNT(r.reservation_id) AS reservation_count,  -- 숙소별 예약 건수를 셉니다.
-                MIN(rt.base_price_per_night) AS min_price     -- 최저 가격을 함께 조회합니다.
+                COUNT(r.reservation_id) AS reservation_count, 
+                MIN(rt.base_price_per_night) AS min_price  
             FROM Accommodation AS a
             JOIN RoomType AS rt ON a.accommodation_id = rt.accommodation_id 
             JOIN Reservation AS r ON rt.room_type_id = r.room_type_id       
@@ -631,6 +698,82 @@ app.get('/recommend/popular', async (req, res) => {
 
     } catch (error) {
         console.error('인기 숙소 조회 중 DB 오류:', error);
+        res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
+});
+
+
+/* =========================================================
+   🚀 8순위 API: 후기(Review) 기능
+   ========================================================= */
+
+// 8-1. 후기 작성하기 (POST /reviews)
+// (로그인한 사용자만 가능 -> authMiddleware 사용)
+app.post('/reviews', authMiddleware, async (req, res) => {
+    
+    // 1. 작성자(나)의 ID를 토큰에서 꺼냅니다.
+    const { userId } = req.user; 
+    
+    // 2. 프론트에서 보낸 내용(숙소ID, 별점, 내용)을 받습니다.
+    const { accommodation_id, rating, content } = req.body;
+
+    if (!accommodation_id || !rating || !content) {
+        return res.status(400).json({ message: '숙소ID, 평점, 내용은 필수입니다.' });
+    }
+
+    try {
+        // 3. 리뷰를 DB에 저장합니다.
+        const insertQuery = `
+            INSERT INTO Review (user_id, accommodation_id, rating, content)
+            VALUES (?, ?, ?, ?)
+        `;
+        await dbPool.query(insertQuery, [userId, accommodation_id, rating, content]);
+
+        // 4. (★보너스 기능★) 숙소 테이블의 '평점'과 '리뷰수'를 자동으로 업데이트합니다!
+        // (리뷰가 하나 달릴 때마다 해당 숙소의 평균 별점을 다시 계산해서 저장합니다)
+        const updateScoreQuery = `
+            UPDATE Accommodation a
+            SET 
+                review_count = (SELECT COUNT(*) FROM Review WHERE accommodation_id = a.accommodation_id),
+                rating = (SELECT AVG(rating) FROM Review WHERE accommodation_id = a.accommodation_id)
+            WHERE a.accommodation_id = ?
+        `;
+        await dbPool.query(updateScoreQuery, [accommodation_id]);
+
+        res.status(201).json({ message: '후기가 성공적으로 등록되었습니다!' });
+
+    } catch (error) {
+        console.error('후기 등록 중 오류:', error);
+        res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
+});
+
+// 8-2. 특정 숙소의 후기 목록 조회 (GET /accommodations/:id/reviews)
+// (로그인 없어도 볼 수 있음)
+app.get('/accommodations/:id/reviews', async (req, res) => {
+    
+    const { id } = req.params; // accommodation_id
+
+    try {
+        // 1. 해당 숙소의 리뷰를 최신순으로 가져옵니다. (작성자 이름 포함)
+        const query = `
+            SELECT 
+                r.review_id, 
+                r.rating, 
+                r.content, 
+                r.created_at,
+                u.name AS user_name
+            FROM Review r
+            JOIN users u ON r.user_id = u.user_id
+            WHERE r.accommodation_id = ?
+            ORDER BY r.created_at DESC
+        `;
+        const [reviews] = await dbPool.query(query, [id]);
+
+        res.status(200).json(reviews);
+
+    } catch (error) {
+        console.error('후기 조회 중 오류:', error);
         res.status(500).json({ message: '서버 오류가 발생했습니다.' });
     }
 });
