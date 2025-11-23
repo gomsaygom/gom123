@@ -893,14 +893,17 @@ app.get('/accommodations/:id/reviews', async (req, res) => {
     const { id } = req.params; // accommodation_id
 
     try {
-        // 1. 해당 숙소의 리뷰를 최신순으로 가져옵니다. (작성자 이름 포함)
+        // 1. 해당 숙소의 리뷰를 최신순으로 가져옵니다. 
+        // [수정] 작성자 이름(user_name) + 이메일(user_email) + 유저ID(user_id)까지 조회!
         const query = `
             SELECT 
                 r.review_id, 
                 r.rating, 
                 r.content, 
                 r.created_at,
-                u.name AS user_name
+                r.user_id,          -- (추가됨) ID로 비교하는 게 가장 확실해서 넣음
+                u.name AS user_name,
+                u.email AS user_email -- (추가됨) 요청하신 이메일!
             FROM Review r
             JOIN users u ON r.user_id = u.user_id
             WHERE r.accommodation_id = ?
