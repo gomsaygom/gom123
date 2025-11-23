@@ -554,7 +554,7 @@ const authMiddleware = (req, res, next) => {
 
 
 /* =========================================================
-   🚀 2-4 API: 내 정보 조회 (GET /me)
+   🚀 2-5 API: 내 정보 조회 (GET /me)
    ========================================================= */
 //  이 API는 JWT를 검사해야 하므로 'authMiddleware'를 사용합니다.
 app.get('/me', authMiddleware, async (req, res) => {
@@ -727,7 +727,7 @@ app.post('/auth/password/reset', async (req, res) => {
 
 
 /* =========================================================
-   🚀 4순위 API: 예약하기 (POST /reservations)
+   🚀 4-1순위 API: 예약하기 (POST /reservations)
    ========================================================= */
 //  '/reservations' 주소로 POST 요청이 오면,
 //  (1) authMiddleware (티켓 검사원)가 먼저 실행되고, (★중요★)
@@ -875,7 +875,7 @@ app.get('/me/reservations', authMiddleware, async (req, res) => {
 
 
 /* =========================================================
-   🚀 6순위 API: 찜하기 기능 (3종 세트)
+   🚀 6-1순위 API: 찜하기 기능 (3종 세트)
    ========================================================= */
 
 //  6-1. 찜 추가하기 (POST /favorites)
@@ -1022,7 +1022,7 @@ app.get('/recommend/popular', async (req, res) => {
 
 
 /* =========================================================
-   🚀 8순위 API: 후기(Review) 기능
+   🚀 8-1순위 API: 후기(Review) 기능
    ========================================================= */
 
 // [추가] 폼 데이터(FormData) 해석을 위한 설정
@@ -1080,38 +1080,6 @@ app.post('/reviews', authMiddleware, upload.none(), async (req, res) => {
     }
 });
 
-// 8-2. 특정 숙소의 후기 목록 조회 (GET /accommodations/:id/reviews)
-// (로그인 없어도 볼 수 있음)
-app.get('/accommodations/:id/reviews', async (req, res) => {
-    
-    const { id } = req.params; // accommodation_id
-
-    try {
-        // 1. 해당 숙소의 리뷰를 최신순으로 가져옵니다. 
-        // [수정] 작성자 이름(user_name) + 이메일(user_email) + 유저ID(user_id)까지 조회!
-        const query = `
-            SELECT 
-                r.review_id, 
-                r.rating, 
-                r.content, 
-                r.created_at,
-                r.user_id,          -- (추가됨) ID로 비교하는 게 가장 확실해서 넣음
-                u.name AS user_name,
-                u.email AS user_email -- (추가됨) 요청하신 이메일!
-            FROM Review r
-            JOIN users u ON r.user_id = u.user_id
-            WHERE r.accommodation_id = ?
-            ORDER BY r.created_at DESC
-        `;
-        const [reviews] = await dbPool.query(query, [id]);
-
-        res.status(200).json(reviews);
-
-    } catch (error) {
-        console.error('후기 조회 중 오류:', error);
-        res.status(500).json({ message: '서버 오류가 발생했습니다.' });
-    }
-});
 
 /* =========================================================
    🚀 8-2순위 API: 후기 수정하기 (PUT /reviews/:id)
@@ -1209,6 +1177,42 @@ app.delete('/reviews/:id', authMiddleware, async (req, res) => {
 
     } catch (error) {
         console.error('리뷰 삭제 오류:', error);
+        res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
+});
+
+/* =========================================================
+// 🚀 8-4. 특정 숙소의 후기 목록 조회 (GET /accommodations/:id/reviews)
+========================================================= */
+
+// (로그인 없어도 볼 수 있음)
+app.get('/accommodations/:id/reviews', async (req, res) => {
+    
+    const { id } = req.params; // accommodation_id
+
+    try {
+        // 1. 해당 숙소의 리뷰를 최신순으로 가져옵니다. 
+        // [수정] 작성자 이름(user_name) + 이메일(user_email) + 유저ID(user_id)까지 조회!
+        const query = `
+            SELECT 
+                r.review_id, 
+                r.rating, 
+                r.content, 
+                r.created_at,
+                r.user_id,          -- (추가됨) ID로 비교하는 게 가장 확실해서 넣음
+                u.name AS user_name,
+                u.email AS user_email -- (추가됨) 요청하신 이메일!
+            FROM Review r
+            JOIN users u ON r.user_id = u.user_id
+            WHERE r.accommodation_id = ?
+            ORDER BY r.created_at DESC
+        `;
+        const [reviews] = await dbPool.query(query, [id]);
+
+        res.status(200).json(reviews);
+
+    } catch (error) {
+        console.error('후기 조회 중 오류:', error);
         res.status(500).json({ message: '서버 오류가 발생했습니다.' });
     }
 });
