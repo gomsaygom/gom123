@@ -9,6 +9,20 @@ const mysql = require('mysql2/promise'); // ⬅️ (기존 주석) (추가됨) D
 const bcrypt = require('bcrypt'); // ⬅️ 2순위: 'bcrypt' (비밀번호 암호화) 부품
 const jwt = require('jsonwebtoken'); // ⬅️ 2순위: 'JWT' (인증 토큰) 부품
 
+// 1. 이메일 라이브러리 불러오기
+const nodemailer = require('nodemailer');
+
+// 2. 우체부(Transporter) 설정
+// (실제 네이버나 구글 아이디로 로그인해서 메일을 대신 보내주는 역할)
+const transporter = nodemailer.createTransport({
+    service: 'gmail', // 구글 사용
+    auth: {
+        user: '본인_구글_이메일@gmail.com',  // 👈 [수정] 본인 구글 이메일 입력
+        pass: '앱_비밀번호_16자리'          // 👈 [수정] 아까 받은 앱 비밀번호 입력 (공백없이)
+    }
+});
+
+
 const app = express();
 app.use(express.json()); // ⬅️ (기존 주석) (추가됨) JSON 파싱에 필요
 app.use(express.urlencoded({ extended: true }));
@@ -129,6 +143,95 @@ app.get('/accommodations', async (req, res) => {
     } catch (error) {
         // 만약 에러가 나면, 프론트와 터미널에 에러를 알려줍니다.
         console.error('숙소 목록 조회 중 오류:', error);
+        res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
+});
+
+
+
+
+
+
+
+
+/* =========================================================
+   📧 이메일 인증 1: 인증번호 발송하기 (POST /auth/email/send)
+   ========================================================= */
+app.post('/auth/email/send', async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        return res.status(400).json({ message: '이메일을 입력해주세요.' });
+    }
+
+    // 1. 6자리 랜덤 숫자 생성 (100000 ~ 999999)
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // 2. 만료 시간 설정 (지금부터 5분 뒤)
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 5);
+
+    try {
+        // 3. DB에 저장 (누구한테 무슨 번호를 보냈는지 기억!)
+        const saveQuery = `
+            INSERT INTO email_verifications (email, code, expires_at)
+            VALUES (?, ?, ?)
+        `;
+        await dbPool.query(saveQuery, [email, verificationCode, expiresAt]);
+
+        // 4. 이메일 실제로 발송 (Nodemailer 사용)
+        const mailOptions = {
+            from: '내_서비스_이름 <본인_구글_이메일@gmail.com>', // 👈 [수정] 보내는 사람 표시
+            to: email,
+            subject: '[야놀자서비스] 회원가입 인증번호입니다.',
+            text: `인증번호는 [${verificationCode}] 입니다. 5분 안에 입력해주세요.`
+        };
+
+        await transporter.sendMail(mailOptions);
+
+        console.log(`📧 인증메일 발송 성공! (${email} -> ${verificationCode})`);
+        res.status(200).json({ message: '인증번호가 메일로 발송되었습니다.' });
+
+    } catch (error) {
+        console.error('이메일 발송 실패:', error);
+        res.status(500).json({ message: '이메일 발송 중 오류가 발생했습니다.' });
+    }
+});
+
+/* =========================================================
+   📧 이메일 인증 2: 인증번호 확인하기 (POST /auth/email/verify)
+   ========================================================= */
+app.post('/auth/email/verify', async (req, res) => {
+    const { email, code } = req.body;
+
+    if (!email || !code) {
+        return res.status(400).json({ message: '이메일과 인증번호를 입력해주세요.' });
+    }
+
+    try {
+        // 1. DB에서 해당 이메일의 '가장 최신' 인증번호 가져오기
+        // (만료시간이 안 지난 것 중에서!)
+        const checkQuery = `
+            SELECT * FROM email_verifications 
+            WHERE email = ? 
+              AND code = ? 
+              AND expires_at > NOW() 
+            ORDER BY created_at DESC 
+            LIMIT 1
+        `;
+        const [rows] = await dbPool.query(checkQuery, [email, code]);
+
+        // 2. 일치하는 게 없다면? (틀렸거나, 만료됨)
+        if (rows.length === 0) {
+            return res.status(400).json({ message: '인증번호가 일치하지 않거나 만료되었습니다.' });
+        }
+
+        // 3. 일치한다면 성공!
+        // (추가 팁: 여기서 인증 성공했다는 사실을 DB에 따로 기록하거나, 프론트가 알아서 다음 단계로 넘어가게 함)
+        res.status(200).json({ message: '이메일 인증이 완료되었습니다!' });
+
+    } catch (error) {
+        console.error('인증번호 확인 오류:', error);
         res.status(500).json({ message: '서버 오류가 발생했습니다.' });
     }
 });
