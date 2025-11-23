@@ -17,8 +17,8 @@ const nodemailer = require('nodemailer');
 const transporter = nodemailer.createTransport({
     service: 'gmail', // 구글 사용
     auth: {
-        user: '본인_구글_이메일@gmail.com',  // 👈 [수정] 본인 구글 이메일 입력
-        pass: '앱_비밀번호_16자리'          // 👈 [수정] 아까 받은 앱 비밀번호 입력 (공백없이)
+        user: 'howgyeongju@gmail.com',  // 👈 [수정] 본인 구글 이메일 입력
+        pass: 'iongfatnfbhrttfn'          // 👈 [수정] 아까 받은 앱 비밀번호 입력 (공백없이)
     }
 });
 
@@ -150,12 +150,8 @@ app.get('/accommodations', async (req, res) => {
 
 
 
-
-
-
-
 /* =========================================================
-   📧 이메일 인증 1: 인증번호 발송하기 (POST /auth/email/send)
+   📧 9-1순위 API : 이메일 인증 1: 인증번호 발송하기 (POST /auth/email/send)
    ========================================================= */
 app.post('/auth/email/send', async (req, res) => {
     const { email } = req.body;
@@ -181,7 +177,7 @@ app.post('/auth/email/send', async (req, res) => {
 
         // 4. 이메일 실제로 발송 (Nodemailer 사용)
         const mailOptions = {
-            from: '내_서비스_이름 <본인_구글_이메일@gmail.com>', // 👈 [수정] 보내는 사람 표시
+            from: '내_서비스_이름 <howgyeongju@gmail.com>', // 👈 [수정] 보내는 사람 표시
             to: email,
             subject: '[야놀자서비스] 회원가입 인증번호입니다.',
             text: `인증번호는 [${verificationCode}] 입니다. 5분 안에 입력해주세요.`
@@ -199,7 +195,7 @@ app.post('/auth/email/send', async (req, res) => {
 });
 
 /* =========================================================
-   📧 이메일 인증 2: 인증번호 확인하기 (POST /auth/email/verify)
+   📧 9-2순위 API : 인증번호 확인하기 (POST /auth/email/verify)
    ========================================================= */
 app.post('/auth/email/verify', async (req, res) => {
     const { email, code } = req.body;
@@ -236,8 +232,9 @@ app.post('/auth/email/verify', async (req, res) => {
     }
 });
 
+
 /* =========================================================
-   🚀 2순위 API: 회원가입 (POST /register)
+   🚀 2-1순위 API: 회원가입 (POST /register)
    ========================================================= */
 //  bcrypt 암호화 강도 설정. 숫자가 높을수록 강력하지만 오래 걸림.
 // const saltRounds = 10; // (상단으로 이동됨)
@@ -294,7 +291,7 @@ app.post('/register', async (req, res) => {
 
 
 /* =========================================================
-   🚀 2순위 API: 로그인 (POST /login) / (Refresh Token 발급 추가됨)
+   🚀 2-2순위 API: 로그인 (POST /login) / (Refresh Token 발급 추가됨)
    ========================================================= */
 //  JWT(자유이용권)을 만들 때 사용할 '비밀 서명'.
 // const JWT_SECRET_KEY = '1234ad'; // (상단으로 이동됨)
@@ -401,7 +398,7 @@ app.get('/auth/session', (req, res) => {
 });
 
 /* =========================================================
-   🔄 토큰 재발급 API (POST /auth/refresh)
+   🔄 2-3 순위 API : 토큰 재발급 API (POST /auth/refresh)
    ========================================================= */
 // 이 API는 Access Token이 아닌, 유효 기간이 긴 Refresh Token을 검증합니다.
 app.post('/auth/refresh', async (req, res) => {
@@ -596,7 +593,7 @@ app.get('/me', authMiddleware, async (req, res) => {
 });
 
 /* =========================================================
-   🚀 9순위 API: 내 정보 수정 (PUT /me)
+   🚀 9-3순위 API: 내 정보 수정 (PUT /me)
    ========================================================= */
 // (이름, 전화번호 수정)
 app.put('/me', authMiddleware, async (req, res) => {
@@ -634,6 +631,100 @@ app.put('/me', authMiddleware, async (req, res) => {
         res.status(500).json({ message: '서버 오류가 발생했습니다.' });
     }
 });
+
+/* =========================================================
+   🚀 9-4순위 API: 비밀번호 변경 (PUT /me/password)
+   ========================================================= */
+app.put('/me/password', authMiddleware, async (req, res) => {
+    const { userId } = req.user;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: '현재 비밀번호와 새 비밀번호를 모두 입력해주세요.' });
+    }
+
+    try {
+        // 1. DB에서 현재 사용자의 '진짜 비밀번호(암호화된 것)'를 가져옵니다.
+        const [users] = await dbPool.query('SELECT password FROM users WHERE user_id = ?', [userId]);
+        
+        if (users.length === 0) {
+            return res.status(404).json({ message: '사용자를 찾을 수 없습니다.' });
+        }
+
+        const dbPassword = users[0].password;
+
+        // 2. 사용자가 입력한 '현재 비밀번호'가 맞는지 확인 (bcrypt 비교)
+        const isMatch = await bcrypt.compare(currentPassword, dbPassword);
+
+        if (!isMatch) {
+            // (보안상 아주 중요!) 현재 비번 틀리면 절대 안 바꿔줌
+            return res.status(401).json({ message: '현재 비밀번호가 일치하지 않습니다.' });
+        }
+
+        // 3. (검증 통과!) 새 비밀번호를 암호화합니다.
+        const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+        // 4. DB에 새 비밀번호로 업데이트
+        await dbPool.query('UPDATE users SET password = ? WHERE user_id = ?', [hashedPassword, userId]);
+
+        res.status(200).json({ message: '비밀번호가 성공적으로 변경되었습니다.' });
+
+    } catch (error) {
+        console.error('비밀번호 변경 오류:', error);
+        res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
+});
+
+
+/* =========================================================
+   📧 9-5순위 API : 비밀번호 찾기 -> 임시 비밀번호 발송 (POST /auth/password/reset)
+   ========================================================= */
+app.post('/auth/password/reset', async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        return res.status(400).json({ message: '이메일을 입력해주세요.' });
+    }
+
+    try {
+        // 1. 가입된 유저인지 확인
+        const [users] = await dbPool.query('SELECT * FROM users WHERE email = ?', [email]);
+        
+        if (users.length === 0) {
+            // 보안상 "없는 이메일입니다"라고 알려주는 것보다 "메일을 보냈습니다"라고 하는 게 좋을 수도 있지만,
+            // 지금은 명확하게 에러를 뱉겠습니다.
+            return res.status(404).json({ message: '가입되지 않은 이메일입니다.' });
+        }
+
+        // 2. 임시 비밀번호 생성 (랜덤 문자열 8자리)
+        const tempPassword = Math.random().toString(36).slice(-8); 
+
+        // 3. 임시 비밀번호 암호화 (bcrypt)
+        // (기존 saltRounds 변수 사용)
+        const hashedPassword = await bcrypt.hash(tempPassword, saltRounds);
+
+        // 4. DB에 암호화된 비밀번호로 업데이트
+        await dbPool.query('UPDATE users SET password = ? WHERE email = ?', [hashedPassword, email]);
+
+        // 5. 이메일 발송
+        const mailOptions = {
+            from: '야놀자클론 <본인_구글_이메일@gmail.com>', // 👈 아까 설정한 그 이메일
+            to: email,
+            subject: '[야놀자 서비스] 임시 비밀번호 안내입니다.',
+            text: `회원님의 임시 비밀번호는 [ ${tempPassword} ] 입니다. \n로그인 후 반드시 비밀번호를 변경해주세요.`
+        };
+
+        await transporter.sendMail(mailOptions);
+
+        console.log(`🔑 임시 비밀번호 발송 완료! (${email} -> ${tempPassword})`);
+        res.status(200).json({ message: '임시 비밀번호가 이메일로 발송되었습니다.' });
+
+    } catch (error) {
+        console.error('비밀번호 재설정 오류:', error);
+        res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
+});
+
 
 /* =========================================================
    🚀 4순위 API: 예약하기 (POST /reservations)
@@ -1124,7 +1215,7 @@ app.delete('/reviews/:id', authMiddleware, async (req, res) => {
 
 
 /* =========================================================
-       최근 본 숙소 목록 조회 (GET /users/recent)
+     2-4순위 API : 최근 본 숙소 목록 조회 (GET /users/recent)
    ========================================================= */
 app.get('/users/recent', authMiddleware, async (req, res) => {
     const { userId } = req.user; // 로그인한 내 아이디
