@@ -1,3 +1,11 @@
+/**
+ * [회원 개인 기능 로직]
+ * - 내 정보 조회 및 수정 (마이페이지)
+ * - 비밀번호 변경
+ * - 최근 본 숙소 목록 조회
+ * - 찜하기(Favorite) 추가, 삭제, 목록 조회
+ */
+
 const dbPool = require('../config/database');
 const bcrypt = require('bcrypt');
 const { saltRounds } = require('../config/secrets');

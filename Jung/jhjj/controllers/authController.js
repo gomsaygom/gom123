@@ -1,3 +1,12 @@
+/**
+ * [인증 관련 로직]
+ * - 회원가입 (비밀번호 암호화)
+ * - 로그인 (Access/Refresh 토큰 발급)
+ * - 토큰 재발급 (Refresh Token 검증)
+ * - 이메일 인증 (인증번호 발송 및 확인)
+ * - 비밀번호 찾기 (임시 비밀번호 발송)
+ */
+
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const dbPool = require('../config/database');

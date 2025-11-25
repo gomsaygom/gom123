@@ -1,4 +1,9 @@
-// 로그인 체크
+/**
+ * [로그인 인증 미들웨어]
+ * 요청 헤더(Authorization)에 담긴 JWT 토큰(Access Token)을 검사합니다.
+ * - 토큰이 유효하면: req.user에 사용자 정보를 담고 통과(next)시킵니다.
+ * - 토큰이 없거나 만료되면: 401 에러를 반환하고 차단합니다.
+ */
 
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET_KEY } = require('../config/secrets');

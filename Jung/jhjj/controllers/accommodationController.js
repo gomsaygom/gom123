@@ -1,3 +1,11 @@
+/**
+ * [숙소 및 리뷰 로직]
+ * - 숙소 목록 조회 (검색, 필터, 태그, 페이지네이션)
+ * - 숙소 상세 정보 조회
+ * - 인기 숙소 추천 (예약 많은 순)
+ * - 후기(Review) 작성(사진 포함), 수정, 삭제, 조회
+ */
+
 const dbPool = require('../config/database');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET_KEY } = require('../config/secrets');

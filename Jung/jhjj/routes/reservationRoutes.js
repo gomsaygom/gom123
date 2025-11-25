@@ -1,3 +1,10 @@
+/**
+ * [예약 라우터] (로그인 필수)
+ * - POST /reservations : 예약하기
+ * - DELETE /reservations/:id : 예약 취소
+ * - GET /me/reservations : 내 예약 조회
+ */
+
 const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/reservationController');

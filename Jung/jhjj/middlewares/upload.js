@@ -1,3 +1,11 @@
+/**
+ * [파일 업로드 미들웨어]
+ * Multer 라이브러리를 사용하여 사용자가 전송한 이미지 파일을 처리합니다.
+ * - 파일 저장 위치: 'uploads/' 폴더
+ * - 파일명: 중복 방지를 위해 '현재시간 + 원본파일명'으로 저장
+ * - 용량 제한: 5MB
+ */
+
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
