@@ -9,7 +9,10 @@ const accommodationRoutes = require('./routes/accommodationRoutes');
 const reservationRoutes = require('./routes/reservationRoutes');
 
 const app = express();
+
+
 const port = 3000;
+
 
 // "내 컴퓨터의 'uploads' 폴더를 외부에서 '/uploads' 주소로 접근할 수 있게 해줘!"
 app.use('/uploads', express.static('uploads'));

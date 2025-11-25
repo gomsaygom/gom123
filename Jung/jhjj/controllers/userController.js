@@ -99,6 +99,7 @@ exports.getRecentViews = async (req, res) => {
     const { userId } = req.user; 
 
     try {
+        console.log("잘 들어");
         const sql = `
             SELECT 
                 a.accommodation_id, a.name, a.main_image_url, a.region_city, r.viewed_at

@@ -7,20 +7,25 @@
  */
 
 const dbPool = require('../config/database');
-const jwt = require('jsonwebtoken');
-const { JWT_SECRET_KEY } = require('../config/secrets');
+const jwt = require('jsonwebtoken'); // 👈 [필수] 토큰 해석기 추가
+const { JWT_SECRET_KEY } = require('../config/secrets'); // 👈 [필수] 비밀키 추가
 
-// [내부 함수] 최근 본 숙소 저장
+// =========================================================
+// 🛠️ [내부 함수] 최근 본 숙소 저장하기
+// =========================================================
 const saveRecentView = async (userId, accommodationId) => {
     try {
+        console.log("gggggg");
+        // "넣어라! 만약 이미 있으면? 본 시간(viewed_at)만 최신으로 바꿔라!"
         const sql = `
             INSERT INTO recently_viewed (user_id, accommodation_id, viewed_at)
             VALUES (?, ?, NOW())
             ON DUPLICATE KEY UPDATE viewed_at = NOW()
         `;
         await dbPool.query(sql, [userId, accommodationId]);
+        console.log(`👀 최근 본 숙소 저장 성공! (User: ${userId}, Acc: ${accommodationId})`);
     } catch (err) {
-        console.error('최근 본 숙소 저장 실패 (무시):', err);
+        console.error('최근 본 숙소 저장 실패 (에러 무시):', err);
     }
 };
 
@@ -32,6 +37,7 @@ exports.getAccommodations = async (req, res) => {
     const offset = (page - 1) * limit;
 
     try {
+        console.log("잘 들어옴");
         let query;
         const queryParams = [];
 
@@ -73,18 +79,28 @@ exports.getAccommodations = async (req, res) => {
     }
 };
 
-// 2. 숙소 상세 조회 (+최근 본 숙소 저장)
+// =========================================================
+// 🚀 2. 숙소 상세 조회 (+최근 본 숙소 자동 저장 로직 포함!)
+// =========================================================
 exports.getAccommodationDetail = async (req, res) => {
     const { id } = req.params; 
-
-    // 로그인 여부 확인 및 저장
+console.log(req.headers.authorization);
+    // 👇 [핵심 기능] 로그인한 유저인지 확인하고, 맞다면 저장 함수 실행!
     const authHeader = req.headers.authorization;
+    console.log("인증 결과" + authHeader);
     if (authHeader) {
         try {
             const token = authHeader.split(' ')[1];
+            // 토큰을 직접 해석해서 userId를 알아냅니다.
             const decoded = jwt.verify(token, JWT_SECRET_KEY);
+            
+            // 비동기로 저장 실행 (await 안 씀 -> 사용자 응답 속도 저하 방지)
             saveRecentView(decoded.userId, id); 
-        } catch (e) {}
+            console.log("숙소 상세 조회");
+        } catch (e) {
+            // 토큰이 만료되었거나 비회원이면 그냥 저장 안 하고 넘어감 (에러 아님)
+            console.log("비회원 또는 토큰 만료로 인해 기록 안 함");
+        }
     }
 
     try {
@@ -120,30 +136,27 @@ exports.getPopular = async (req, res) => {
     }
 };
 
-// 4. 리뷰 작성 (사진 추가 버전)
+// 4. 리뷰 작성
 exports.createReview = async (req, res) => {
     const userId = req.user.userId || req.user.id;
     let { accommodation_id, rating, content } = req.body;
     
-    // 👇 [추가됨] 업로드된 파일이 있으면 주소 만들기, 없으면 NULL
-    // (윈도우 경로 역슬래시 \ 를 슬래시 / 로 바꿔주는 처리 포함)
     const image_url = req.file ? `http://localhost:3000/uploads/${req.file.filename}` : null;
 
     if (rating === undefined || rating === "") rating = 5; 
     if (!accommodation_id || !content) return res.status(400).json({ message: '필수 정보 누락' });
 
     try {
-        // 👇 [수정됨] image_url 컬럼 추가
         await dbPool.query(
-            'INSERT INTO review (user_id, accommodation_id, rating, content, image_url) VALUES (?, ?, ?, ?, ?)', 
+            'INSERT INTO Review (user_id, accommodation_id, rating, content, image_url) VALUES (?, ?, ?, ?, ?)', 
             [userId, accommodation_id, rating, content, image_url]
         );
 
-        // 숙소 평점 업데이트 (기존과 동일)
+        // 숙소 평점 업데이트
         const updateQuery = `
-            UPDATE accommodation a SET 
-            review_count = (SELECT COUNT(*) FROM review WHERE accommodation_id = a.accommodation_id),
-            rating = (SELECT AVG(rating) FROM review WHERE accommodation_id = a.accommodation_id)
+            UPDATE Accommodation a SET 
+            review_count = (SELECT COUNT(*) FROM Review WHERE accommodation_id = a.accommodation_id),
+            rating = (SELECT AVG(rating) FROM Review WHERE accommodation_id = a.accommodation_id)
             WHERE a.accommodation_id = ?
         `;
         await dbPool.query(updateQuery, [accommodation_id]);
@@ -172,7 +185,6 @@ exports.updateReview = async (req, res) => {
 
         await dbPool.query('UPDATE Review SET rating = ?, content = ?, updated_at = NOW() WHERE review_id = ?', [rating, content, reviewId]);
         
-        // 평점 재계산
         await dbPool.query(`
             UPDATE Accommodation a SET rating = (SELECT AVG(rating) FROM Review WHERE accommodation_id = a.accommodation_id) WHERE accommodation_id = ?
         `, [accommodationId]);
@@ -195,7 +207,6 @@ exports.deleteReview = async (req, res) => {
         const accommodationId = reviews[0].accommodation_id;
         await dbPool.query('DELETE FROM Review WHERE review_id = ?', [reviewId]);
 
-        // 평점 재계산
         await dbPool.query(`
             UPDATE Accommodation a SET 
             review_count = (SELECT COUNT(*) FROM Review WHERE accommodation_id = a.accommodation_id),

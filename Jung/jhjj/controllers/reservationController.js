@@ -55,20 +55,38 @@ exports.cancelReservation = async (req, res) => {
     }
 };
 
-// 3. 내 예약 목록
+// ============================================================
+// 👇 [수정됨] 3. 내 예약 목록 (자동 '이용완료' 처리 추가)
+// ============================================================
 exports.getMyReservations = async (req, res) => {
     const { userId } = req.user;
+
     try {
+        // 1. 체크아웃 날짜가 지난 예약은 상태를 'COMPLETED'로 자동 업데이트
+        // (쿼리에 백틱 ` ` 을 꼭 붙여야 합니다!)
+        await dbPool.query(`
+            UPDATE Reservation 
+            SET status = 'COMPLETED' 
+            WHERE user_id = ? 
+            AND checkout_date < CURDATE() 
+            AND status = 'CONFIRMED'
+        `, [userId]);
+
+        // 2. 업데이트된 최신 목록 조회
         const query = `
             SELECT r.*, rt.name AS room_name, a.name AS accommodation_name, a.address 
             FROM Reservation r 
             JOIN RoomType rt ON r.room_type_id = rt.room_type_id 
             JOIN Accommodation a ON rt.accommodation_id = a.accommodation_id 
-            WHERE r.user_id = ? ORDER BY r.checkin_date DESC
+            WHERE r.user_id = ? 
+            ORDER BY r.checkin_date DESC
         `;
+
         const [rows] = await dbPool.query(query, [userId]);
+
         res.status(200).json(rows);
     } catch (error) {
+        console.error('예약 목록 조회 오류:', error);
         res.status(500).json({ message: '서버 오류' });
     }
 };

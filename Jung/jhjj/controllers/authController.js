@@ -94,6 +94,7 @@ exports.login = async (req, res) => {
             message: '로그인 성공!',
             accessToken,
             refreshToken,
+            userId: user.user_id,
             name: user.name,
             email: user.email
         });
