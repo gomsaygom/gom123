@@ -31,19 +31,29 @@ const saveRecentView = async (userId, accommodationId) => {
 
 // 1. 숙소 목록 조회 (검색/필터/페이지네이션)
 exports.getAccommodations = async (req, res) => {
+    // [수정됨] 1. 기본 limit을 1000개로 설정하여, 값이 없을 경우 모든 숙소를 불러옴
+    const ALL_RESULTS_MAX = 1000; 
+    
     let { type, keyword, tag, page, limit } = req.query; 
+    
+    // 2. 기본값 적용: limit이 없으면 1000을 사용 (await)
     page = parseInt(page) || 1;
-    limit = parseInt(limit) || 20;
-    const offset = (page - 1) * limit;
+    limit = parseInt(limit) || ALL_RESULTS_MAX; 
+    
+    const offset = (page - 1) * limit; 
 
     try {
-        console.log("잘 들어옴");
         let query;
         const queryParams = [];
 
+        // 태그 필터가 있을 때 (JOIN이 복잡함)
         if (tag) {
             query = `
-                SELECT DISTINCT a.*, (SELECT MIN(base_price_per_night) FROM RoomType WHERE accommodation_id = a.accommodation_id) AS min_price
+                SELECT DISTINCT 
+                    a.accommodation_id, a.owner_user_id, a.type_id, a.name, a.address, 
+                    a.latitude, a.longitude, a.region_city, a.description, a.is_active,
+                    a.type, a.main_image_url, a.rating, a.review_count, 
+                    (SELECT MIN(base_price_per_night) FROM RoomType WHERE accommodation_id = a.accommodation_id) AS min_price
                 FROM Accommodation AS a
                 JOIN RoomType AS rt ON a.accommodation_id = rt.accommodation_id
                 JOIN RoomTypeTag AS rtt ON rt.room_type_id = rtt.room_type_id
@@ -51,24 +61,39 @@ exports.getAccommodations = async (req, res) => {
                 WHERE a.is_active = 1 AND t.name = ?
             `;
             queryParams.push(tag);
-        } else {
-            query = 'SELECT * FROM Accommodation WHERE is_active = 1';
         }
 
+        // 태그 필터가 없을 때 (단순 조회)
+        else {
+            query = `
+                SELECT 
+                    accommodation_id, owner_user_id, type_id, name, address, 
+                    latitude, longitude, region_city, description, is_active,
+                    type, main_image_url, rating, review_count 
+                FROM Accommodation 
+                WHERE is_active = 1
+            `;
+        }
+
+        // 타입 필터
         if (type && !tag) { 
             query += ' AND type = ?';
             queryParams.push(type);
         }
+
+        // 검색어 필터
         if (keyword && !tag) { 
             query += ' AND name LIKE ?';
-            queryParams.push(`%${keyword}%`);
+            queryParams.push(`%${keyword}%`); 
         }
 
+        // 3. 페이지네이션 (LIMIT은 1000 또는 사용자가 지정한 값)
         query += ' ORDER BY accommodation_id DESC LIMIT ? OFFSET ?';
         queryParams.push(limit, offset);
 
         const [rows] = await dbPool.query(query, queryParams);
-        
+
+        // 4. 응답 (페이지네이션 메타데이터 포함)
         res.status(200).json({
             page, limit, total_current: rows.length, data: rows
         });
@@ -120,18 +145,34 @@ console.log(req.headers.authorization);
 // 3. 인기 숙소 추천
 exports.getPopular = async (req, res) => {
     try {
+        // [수정됨] 쿼리를 백틱(`)으로 감싸서 문자열 오류를 해결합니다.
         const query = `
-            SELECT a.accommodation_id, a.name, a.region_city, COUNT(r.reservation_id) AS count, MIN(rt.base_price_per_night) AS min_price 
+            SELECT 
+                a.accommodation_id, 
+                a.name, 
+                a.region_city, 
+                a.main_image_url,  
+                COUNT(r.reservation_id) AS count, 
+                MIN(rt.base_price_per_night) AS min_price 
             FROM Accommodation AS a
-            JOIN RoomType AS rt ON a.accommodation_id = rt.accommodation_id 
-            JOIN Reservation AS r ON rt.room_type_id = r.room_type_id 
+            JOIN RoomType AS rt 
+                ON a.accommodation_id = rt.accommodation_id 
+            JOIN Reservation AS r 
+                ON rt.room_type_id = r.room_type_id 
             WHERE r.status = 'CONFIRMED' 
-            GROUP BY a.accommodation_id, a.name, a.region_city
+            GROUP BY 
+                a.accommodation_id, 
+                a.name, 
+                a.region_city,
+                a.main_image_url   
             ORDER BY count DESC, min_price ASC
         `;
+        
         const [rows] = await dbPool.query(query);
         res.status(200).json(rows);
+
     } catch (error) {
+        console.error('인기 숙소 추천 조회 중 DB 오류:', error);
         res.status(500).json({ message: '서버 오류' });
     }
 };

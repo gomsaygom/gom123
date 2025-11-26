@@ -15,9 +15,11 @@ const { saltRounds, JWT_SECRET_KEY, JWT_REFRESH_SECRET_KEY } = require('../confi
 
 // 1. 회원가입
 exports.register = async (req, res) => {
-    const { email, password, name, phone, role_code } = req.body;
+    // [수정됨] nickname 필드를 추가로 받습니다.
+    const { email, password, name, nickname, phone, role_code } = req.body; 
 
-    if (!email || !password || !name) {
+    // [수정됨] nickname은 필수 항목에서 제외합니다. (선택 사항으로 처리)
+    if (!email || !password || !name) { 
         return res.status(400).json({ message: '이메일, 비밀번호, 이름은 필수입니다.' });
     }
 
@@ -25,12 +27,12 @@ exports.register = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, saltRounds);
         
         const query = `
-            INSERT INTO users (email, password, name, phone, role_code) 
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO users (email, password, name, nickname, phone, role_code) 
+            VALUES (?, ?, ?, ?, ?, ?)  // 👈 SQL VALUES에 ? 하나 추가됨
         `;
         
         await dbPool.query(query, [
-            email, hashedPassword, name, phone, role_code || 'CUSTOMER'
+            email, hashedPassword, name, nickname, phone, role_code || 'CUSTOMER'
         ]);
 
         res.status(201).json({ message: '회원가입에 성공했습니다!' });
@@ -96,7 +98,8 @@ exports.login = async (req, res) => {
             refreshToken,
             userId: user.user_id,
             name: user.name,
-            email: user.email
+            email: user.email,
+            nickname: user.nickname
         });
 
     } catch (error) {

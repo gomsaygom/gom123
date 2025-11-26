@@ -54,6 +54,10 @@ exports.updateMe = async (req, res) => {
             updateQuery += 'phone = ?, ';
             params.push(phone);
         }
+        if (nickname) { // 👈 [추가됨] 닉네임 수정 로직
+            updateQuery += 'nickname = ?, ';
+            params.push(nickname);
+        }
 
         updateQuery = updateQuery.slice(0, -2) + ' WHERE user_id = ?';
         params.push(userId);
