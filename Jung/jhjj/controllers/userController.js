@@ -39,7 +39,7 @@ exports.getMe = async (req, res) => {
 // 2. 내 정보 수정
 exports.updateMe = async (req, res) => {
     const { userId } = req.user;
-    const { name, phone } = req.body;
+    const { name, nickname, phone } = req.body;
 
     if (!name && !phone) {
         return res.status(400).json({ message: '수정할 이름이나 전화번호를 입력해주세요.' });
@@ -130,14 +130,28 @@ exports.addFavorite = async (req, res) => {
     const { userId } = req.user; 
     const { accommodation_id } = req.body;
 
-    if (!accommodation_id) return res.status(400).json({ message: '숙소 ID가 필요합니다.' });
+    if (!accommodation_id)
+        return res.status(400).json({ message: '숙소 ID가 필요합니다.' });
 
     try {
         const query = 'INSERT INTO Favorite (user_id, accommodation_id) VALUES (?, ?)';
-        await dbPool.query(query, [userId, accommodation_id]);
-        res.status(201).json({ message: '찜 목록에 추가되었습니다!' });
+
+        // ⭐INSERT 실행 → insertId 가져오기
+        const [result] = await dbPool.query(query, [userId, accommodation_id]);
+
+        const favoriteId = result.insertId;   // ← 생성된 favorite_id
+
+        res.status(201).json({
+            message: '찜 목록에 추가되었습니다!',
+            favorite_id: favoriteId          // ← 프론트로 전달
+        });
+
     } catch (error) {
-        if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: '이미 찜 목록에 있습니다.' });
+        console.error("찜추가 오류:", error);
+
+        if (error.code === 'ER_DUP_ENTRY')
+            return res.status(409).json({ message: '이미 찜 목록에 있습니다.' });
+
         res.status(500).json({ message: '서버 오류' });
     }
 };

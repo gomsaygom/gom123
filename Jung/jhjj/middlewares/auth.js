@@ -12,6 +12,7 @@ const authMiddleware = (req, res, next) => {
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
+        console.log("내오림");
         return res.status(401).json({ message: '인증 토큰이 필요합니다.' });
     }
 
