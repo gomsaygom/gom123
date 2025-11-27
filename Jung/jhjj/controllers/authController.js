@@ -28,7 +28,7 @@ exports.register = async (req, res) => {
         
         const query = `
             INSERT INTO users (email, password, name, nickname, phone, role_code) 
-            VALUES (?, ?, ?, ?, ?, ?)  // 👈 SQL VALUES에 ? 하나 추가됨
+            VALUES (?, ?, ?, ?, ?, ?) 
         `;
         
         await dbPool.query(query, [
@@ -110,7 +110,11 @@ exports.login = async (req, res) => {
 
 // 3. 토큰 재발급
 exports.refreshToken = async (req, res) => {
-    const { refreshToken } = req.body;
+
+    // 헤더 또는 body 둘 다 지원하도록 수정
+    const refreshToken =
+        req.body.refreshToken ||
+        req.headers['authorization']?.split(' ')[1];
 
     if (!refreshToken) {
         return res.status(401).json({ message: 'Refresh Token이 필요합니다.' });
@@ -132,10 +136,13 @@ exports.refreshToken = async (req, res) => {
             }
 
             if (new Date() > new Date(dbToken.expires_at)) {
-                 return res.status(403).json({ message: 'Refresh Token이 만료되었습니다. 다시 로그인하세요.' });
+                return res.status(403).json({ message: 'Refresh Token이 만료되었습니다. 다시 로그인하세요.' });
             }
 
-            const [users] = await dbPool.query('SELECT * FROM users WHERE user_id = ?', [decoded.userId]);
+            const [users] = await dbPool.query(
+                'SELECT * FROM users WHERE user_id = ?', 
+                [decoded.userId]
+            );
             const user = users[0];
 
             const newAccessToken = jwt.sign(
