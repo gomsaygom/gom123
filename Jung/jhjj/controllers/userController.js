@@ -15,16 +15,19 @@ exports.getMe = async (req, res) => {
     const { userId } = req.user; 
 
     try {
+        // [수정됨] 닉네임(nickname) 필드를 SELECT 목록에 추가합니다.
         const query = `
-            SELECT user_id, name, email, phone, role_code, created_at
+            SELECT user_id, name, nickname, email, phone, role_code, created_at
             FROM users WHERE user_id = ?
-        `;
+        `; 
+        
         const [rows] = await dbPool.query(query, [userId]);
 
         if (rows.length === 0) {
             return res.status(404).json({ message: '사용자를 찾을 수 없습니다.' });
         }
 
+        // 4. 조회된 정보를 DTO 형식으로 응답합니다. (rows[0]에 nickname이 포함됨)
         res.status(200).json({ user: rows[0] });
 
     } catch (error) {

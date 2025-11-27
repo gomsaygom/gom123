@@ -266,13 +266,20 @@ exports.getReviews = async (req, res) => {
     const { id } = req.params;
     try {
         const query = `
-            SELECT r.*, u.name AS user_name, u.email AS user_email 
-            FROM Review r JOIN users u ON r.user_id = u.user_id 
-            WHERE r.accommodation_id = ? ORDER BY r.created_at DESC
+            SELECT 
+                r.*, 
+                u.nickname AS user_name,  /* 👈 [수정] 닉네임을 user_name으로 반환 */
+                u.email AS user_email,
+                u.user_id 
+            FROM Review r 
+            JOIN users u ON r.user_id = u.user_id 
+            WHERE r.accommodation_id = ? 
+            ORDER BY r.created_at DESC
         `;
         const [reviews] = await dbPool.query(query, [id]);
         res.status(200).json(reviews);
     } catch (error) {
+        console.error('후기 조회 중 오류:', error);
         res.status(500).json({ message: '서버 오류' });
     }
 };
