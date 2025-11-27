@@ -261,3 +261,36 @@ exports.resetPassword = async (req, res) => {
         res.status(500).json({ message: '서버 오류가 발생했습니다.' });
     }
 };
+
+// 7. 로그인 상태 확인 (토큰 검사만)
+exports.checkSession = (req, res) => {
+    // 이 함수는 authMiddleware를 사용하지 않고, 토큰 유효성만 체크합니다.
+    const authHeader = req.headers.authorization;
+    
+    // 토큰이 없으면 비회원 처리
+    if (!authHeader) {
+        return res.json({ isAuthenticated: false });
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+        return res.json({ isAuthenticated: false });
+    }
+
+    try {
+        // 토큰 검증 (만료 여부만 체크)
+        const decoded = jwt.verify(token, JWT_SECRET_KEY); 
+
+        // 검증 성공 (로그인 상태)
+        return res.json({
+            isAuthenticated: true,
+            user: {
+                userId: decoded.userId,
+                role: decoded.role
+            }
+        });
+    } catch (err) {
+        // 만료되었거나 위조된 토큰도 여기서 잡힘 -> 로그인 상태 아님
+        return res.json({ isAuthenticated: false });
+    }
+};
