@@ -1,31 +1,31 @@
 // models/ChatRoom.js
 const mongoose = require("mongoose");
 
-const ChatRoomSchema = new mongoose.Schema(
+const chatRoomSchema = new mongoose.Schema(
   {
+    // 단체방/DM 구분
     isDM: { type: Boolean, default: false },
-    accommodationId: { type: Number }, // 단체방일 때만 사용
+
+    // 단체방이면 숙소 ID 필요
+    accommodationId: { type: Number },
+
+    // 참여자 목록(표시/검색용). 이제 권한 판단엔 쓰지 않음 → 빈 배열 허용
     participants: {
-      type: [String],  // 문자열 배열
-      required: true,
-      validate: {
-        validator: (arr) =>
-          Array.isArray(arr) &&
-          arr.length > 0 &&
-          arr.every(v => typeof v === "string" && v.trim() !== ""),
-        message: "participants 배열은 비어있을 수 없고, 빈 문자열을 포함할 수 없습니다.",
-      },
+      type: [{ type: String, trim: true, lowercase: true }],
+      default: [], // ✅ 빈 배열 허용
     },
   },
   { timestamps: true }
 );
 
-// 이미 컴파일된 모델이 있으면 재사용
-module.exports = mongoose.models.ChatRoom || mongoose.model("ChatRoom", ChatRoomSchema);
-
-// ... 기존 스키마 정의 위/아래 어디든 인덱스 정의만 추가하면 됨
-ChatRoomSchema.index(
-  { expiresAt: 1 },
-  { expireAfterSeconds: 0, partialFilterExpression: { isDM: true, expiresAt: { $exists: true } } }
+// "숙소별 단 하나의 단체방" 보장(단, isDM:false일 때만)
+chatRoomSchema.index(
+  { isDM: 1, accommodationId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { isDM: false, accommodationId: { $type: "number" } },
+  }
 );
 
+module.exports =
+  mongoose.models.ChatRoom || mongoose.model("ChatRoom", chatRoomSchema);
