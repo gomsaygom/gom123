@@ -1,37 +1,37 @@
 // models/Message.js
 const mongoose = require("mongoose");
 
-const MessageSchema = new mongoose.Schema(
+const messageSchema = new mongoose.Schema(
   {
+    // 어떤 방에 속한 메시지인지 (chatrooms._id 문자열)
     roomId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "ChatRoom",
+      type: String,
       required: true,
     },
+
+    // 보낸 사람 (이메일 문자열 사용)
     senderId: {
-      type: String,   // 문자열로 고정
+      type: String,
       required: true,
-      trim: true,
     },
+
+    // 실제 채팅 내용
     content: {
       type: String,
       required: true,
-      trim: true,
     },
+
+    // 메시지 타입 (지금은 text만 사용)
     type: {
       type: String,
-      enum: ["text", "image", "system"],
       default: "text",
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true, // createdAt, updatedAt
+  }
 );
 
-// 이미 컴파일된 모델이 있으면 재사용 (OverwriteModelError 방지)
-module.exports = mongoose.models.Message || mongoose.model("Message", MessageSchema);
-
-MessageSchema.index(
-  { expiresAt: 1 },
-  { expireAfterSeconds: 0, partialFilterExpression: { expiresAt: { $exists: true } } }
-);
-
+// OverwriteModelError 방지
+module.exports =
+  mongoose.models.Message || mongoose.model("Message", messageSchema);
