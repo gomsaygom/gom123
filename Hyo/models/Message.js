@@ -8,22 +8,30 @@ const MessageSchema = new mongoose.Schema(
       ref: "ChatRoom",
       required: true,
     },
-    // 🔹 여기! 원래 Number였던 걸 String으로 바꿈
     senderId: {
-      type: String, // 마리아DB user_id를 문자열로 저장
+      type: String,   // 문자열로 고정
       required: true,
+      trim: true,
     },
     content: {
       type: String,
       required: true,
+      trim: true,
     },
     type: {
       type: String,
-      enum: ["text", "system"],
+      enum: ["text", "image", "system"],
       default: "text",
     },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Message", MessageSchema);
+// 이미 컴파일된 모델이 있으면 재사용 (OverwriteModelError 방지)
+module.exports = mongoose.models.Message || mongoose.model("Message", MessageSchema);
+
+MessageSchema.index(
+  { expiresAt: 1 },
+  { expireAfterSeconds: 0, partialFilterExpression: { expiresAt: { $exists: true } } }
+);
+

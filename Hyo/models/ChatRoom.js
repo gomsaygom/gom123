@@ -1,29 +1,31 @@
 // models/ChatRoom.js
 const mongoose = require("mongoose");
 
-const ChatRoomSchema = new mongoose.Schema(
+const chatRoomSchema = new mongoose.Schema(
   {
-    // 숙소 단체 채팅방이면 숙소 ID (MariaDB의 room_id 같은 것)
-    accommodationId: {
-      type: Number, // 이건 숙소 PK니까 Number로 놔둬도 됨
-      required: false,
-    },
+    // 단체방/DM 구분
+    isDM: { type: Boolean, default: false },
 
-    // DM인지 여부
-    isDM: {
-      type: Boolean,
-      default: false,
-    },
+    // 단체방이면 숙소 ID 필요
+    accommodationId: { type: Number },
 
-    // 참여자 ID 목록 (user_id 문자열로 저장)
-    participants: [
-      {
-        type: String, // 🔹 Number → String 으로 변경
-        required: true,
-      },
-    ],
+    // 참여자 목록(표시/검색용). 이제 권한 판단엔 쓰지 않음 → 빈 배열 허용
+    participants: {
+      type: [{ type: String, trim: true, lowercase: true }],
+      default: [], // ✅ 빈 배열 허용
+    },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("ChatRoom", ChatRoomSchema);
+// "숙소별 단 하나의 단체방" 보장(단, isDM:false일 때만)
+chatRoomSchema.index(
+  { isDM: 1, accommodationId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { isDM: false, accommodationId: { $type: "number" } },
+  }
+);
+
+module.exports =
+  mongoose.models.ChatRoom || mongoose.model("ChatRoom", chatRoomSchema);
